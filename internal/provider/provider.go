@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"terraform-provider-altr/internal/client"
+	datasources "terraform-provider-altr/internal/service/data_source"
 	"terraform-provider-altr/internal/service/policy"
 	"terraform-provider-altr/internal/service/repo"
 	"terraform-provider-altr/internal/service/sidecar"
@@ -138,6 +139,7 @@ func (p *SidecarProvider) Resources(ctx context.Context) []func() resource.Resou
 		policy.NewAccessManagementOltpPolicyDataResource,
 		policy.NewAccessManagementSnowflakePolicyDataResource,
 		policy.NewImpersonationPolicyResource,
+		datasources.NewDataSourceResource,
 	}
 }
 
