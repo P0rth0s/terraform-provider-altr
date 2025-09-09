@@ -1,9 +1,9 @@
 package client
 
 import (
-	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 )
 
 // Database represents a database object returned by the ALTR API.
@@ -41,11 +41,10 @@ type CreateDataSourceInput struct {
 	FriendlyDatabaseName string `json:"friendlyDatabaseName,omitempty"`
 }
 
-// GetDatasources fetches the list of datasources from the ALTR API.
-func (c *Client) GetDataSources(ctx context.Context) ([]DataSource, error) {
-	resp, err := c.makeRequest(http.MethodGet, "/databases", nil, "external")
+func (c *Client) GetDataSource(datasourceId int64) (*DataSource, error) {
+	resp, err := c.makeRequest(http.MethodGet, fmt.Sprintf("/database/%s", strconv.FormatInt(datasourceId, 10)), nil, "external")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get impersonation policy: %w", err)
+		return nil, fmt.Errorf("failed to fetch datasource: %w", err)
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
@@ -53,14 +52,15 @@ func (c *Client) GetDataSources(ctx context.Context) ([]DataSource, error) {
 	}
 
 	var response struct {
-		Data []DataSource `json:"data"`
+		Data DataSource `json:"data"`
 	}
 
 	if err := handleAPIResponse(resp, &response); err != nil {
-		return nil, fmt.Errorf("failed to get impersonation policy: %w", err)
+		return nil, fmt.Errorf("failed to parse datasource response: %w", err)
 	}
 
-	return response.Data, nil
+	return &response.Data, nil
+
 }
 
 func (c *Client) CreateDataSource(input CreateDataSourceInput) (*DataSource, error) {

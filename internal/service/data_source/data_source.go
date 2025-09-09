@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"terraform-provider-altr/internal/client"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -22,7 +23,7 @@ type DataSourceResource struct {
 	client *client.Client
 }
 
-type DataSourceModel struct {
+type DataSourceResourceModel struct {
 	FriendlyDatabaseName types.String `tfsdk:"friendly_database_name"`
 	DatabaseType         types.String `tfsdk:"database_type"`
 	DatabaseName         types.String `tfsdk:"database_name"`
@@ -33,6 +34,7 @@ type DataSourceModel struct {
 	Hostname             types.String `tfsdk:"hostname"`
 	DatabasePort         types.Int64  `tfsdk:"database_port"`
 	ClientID             types.String `tfsdk:"client_id"`
+	ID                   types.Int64  `tfsdk:"id"`
 }
 
 func NewDataSourceResource() resource.Resource {
@@ -46,10 +48,8 @@ func (d *DataSourceResource) Metadata(ctx context.Context, req resource.Metadata
 
 // ImportState imports the state of an existing resource.
 func (d *DataSourceResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resp.Diagnostics.AddError(
-		"Not Implemented",
-		"The ImportState operation is not implemented for this resource.",
-	)
+	// Retrieve import ID and save to id attribute
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // Schema defines the schema for the data source.
@@ -80,22 +80,15 @@ func (d *DataSourceResource) Schema(_ context.Context, req resource.SchemaReques
 
 // Read fetches the data from the API and populates the Terraform state.
 func (d *DataSourceResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var state struct {
-		Databases []struct {
-			ID                   types.Int64  `tfsdk:"id"`
-			ClientID             types.String `tfsdk:"client_id"`
-			FriendlyDatabaseName types.String `tfsdk:"friendly_database_name"`
-			DatabaseType         types.String `tfsdk:"database_type"`
-			DatabaseName         types.String `tfsdk:"database_name"`
-			DatabaseUsername     types.String `tfsdk:"database_username"`
-			SFCount              types.Int64  `tfsdk:"sf_count"`
-			InProgress           types.Int64  `tfsdk:"in_progress"`
-			LastConnectedTime    types.String `tfsdk:"last_connected_time"`
-		} `tfsdk:"databases"`
+	var state DataSourceResourceModel
+
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	// Fetch databases from the API
-	databases, err := d.client.GetDataSources(ctx)
+	database, err := d.client.GetDataSource(state.ID.ValueInt64())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to retrieve databases",
@@ -104,34 +97,15 @@ func (d *DataSourceResource) Read(ctx context.Context, req resource.ReadRequest,
 		return
 	}
 
-	// Map API response to state
-	for _, db := range databases {
-		state.Databases = append(state.Databases, struct {
-			ID                   types.Int64  `tfsdk:"id"`
-			ClientID             types.String `tfsdk:"client_id"`
-			FriendlyDatabaseName types.String `tfsdk:"friendly_database_name"`
-			DatabaseType         types.String `tfsdk:"database_type"`
-			DatabaseName         types.String `tfsdk:"database_name"`
-			DatabaseUsername     types.String `tfsdk:"database_username"`
-			SFCount              types.Int64  `tfsdk:"sf_count"`
-			InProgress           types.Int64  `tfsdk:"in_progress"`
-			LastConnectedTime    types.String `tfsdk:"last_connected_time"`
-		}{
-			ID:                   types.Int64Value(db.ID),
-			ClientID:             types.StringValue(db.ClientID),
-			FriendlyDatabaseName: types.StringValue(db.FriendlyDatabaseName),
-			DatabaseType:         types.StringValue(db.DatabaseType),
-			DatabaseName:         types.StringValue(db.DatabaseName),
-			DatabaseUsername:     types.StringValue(db.DatabaseUsername),
-			SFCount:              types.Int64Value(db.SFCount),
-			InProgress:           types.Int64Value(db.InProgress),
-			LastConnectedTime:    types.StringValue(db.LastConnectedTime),
-		})
+	if database == nil {
+		resp.State.RemoveResource(ctx)
+		return
 	}
 
+	d.mapPolicyToModel(database, &state)
+
 	// Set state
-	diags := resp.State.Set(ctx, &state)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
 func (d *DataSourceResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -228,4 +202,17 @@ func (d *DataSourceResource) Update(ctx context.Context, req resource.UpdateRequ
 		"Not Implemented",
 		"The Update operation is not implemented for this resource.",
 	)
+}
+
+func (d *DataSourceResource) mapPolicyToModel(dataSource *client.DataSource, model *DataSourceResourceModel) {
+	model.FriendlyDatabaseName = types.StringValue(dataSource.FriendlyDatabaseName)
+	model.DatabaseType = types.StringValue(dataSource.DatabaseType)
+	model.DatabaseName = types.StringValue(dataSource.DatabaseName)
+	model.DatabaseUsername = types.StringValue(dataSource.DatabaseUsername)
+	model.SFCount = types.Int64Value(dataSource.SFCount)
+	model.InProgress = types.Int64Value(dataSource.InProgress)
+	model.LastConnectedTime = types.StringValue(dataSource.LastConnectedTime)
+	model.Hostname = types.StringValue(dataSource.Hostname)
+	model.DatabasePort = types.Int64Value(dataSource.DatabasePort)
+	model.ClientID = types.StringValue(dataSource.ClientID)
 }
